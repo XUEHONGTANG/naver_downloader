@@ -1,0 +1,53 @@
+# 每次 push 或在 Actions 頁面手動執行，會自動打包 Windows / Mac 版本
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: NaverDownloader-windows
+          - os: macos-latest        # Apple Silicon（M 系列）
+            name: NaverDownloader-mac-apple-silicon
+          - os: macos-15-intel      # Intel Mac
+            name: NaverDownloader-mac-intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install playwright pyinstaller
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --name NaverDownloader naver_downloader.py
+          Copy-Item 使用說明.txt dist/
+
+      - name: Build (Mac)
+        if: runner.os == 'macOS'
+        run: |
+          pyinstaller --noconfirm --windowed --name NaverDownloader naver_downloader.py
+          cd dist
+          ditto -c -k --keepParent NaverDownloader.app NaverDownloader-mac.zip
+          cp ../使用說明.txt .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            dist/NaverDownloader.exe
+            dist/NaverDownloader-mac.zip
+            dist/使用說明.txt
+          if-no-files-found: error

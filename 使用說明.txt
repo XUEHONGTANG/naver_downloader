@@ -1,0 +1,25 @@
+Naver 付費文章下載器 使用說明
+
+【開啟程式】
+Windows：雙擊「NaverDownloader.exe」
+  （若跳出「已保護您的電腦」，按「其他資訊」→「仍要執行」）
+Mac：解壓縮後，對「NaverDownloader.app」按右鍵 →「打開」→ 再按「打開」
+  （第一次不能直接雙擊，Mac 會擋未簽章的 App；之後就能正常雙擊）
+
+【下載文章】
+1. 在網址欄貼上網址，一行一個：
+   - 頻道首頁，例如 https://contents.premium.naver.com/willam/william
+     會下載所有分類的文章，並依分類存到不同資料夾
+   - 全部文章列表，例如 https://contents.premium.naver.com/willam/william/contents
+     會下載全部文章，存在同一個資料夾
+   - 單篇文章，例如 https://contents.premium.naver.com/willam/william/contents/260314210024586qe
+2. 確認存放資料夾（預設存到桌面的「Naver文章」資料夾）
+3. 按「開始」，會跳出一個瀏覽器視窗
+4. 在瀏覽器中登入你自己的 Naver 帳號，登入完成後回到程式按「我已登入」
+5. 等待下載完成，文章會一篇一篇存成 .md 檔（可用文字編輯器或 Obsidian 開啟）
+
+【補充】
+- 只會下載你帳號有訂閱、看得到的文章
+- 第二次使用通常不用再登入；已下載過的文章會自動略過
+- 電腦需要安裝 Google Chrome（Windows 內建的 Edge 也可以）
+- 下載的內容僅供個人閱讀備份，請勿轉傳
