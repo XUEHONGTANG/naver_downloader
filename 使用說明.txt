@@ -1,10 +1,20 @@
 Naver 付費文章下載器 使用說明
 
+【下載哪個檔案】
+Windows：NaverDownloader-windows.exe
+Mac（M1/M2/M3/M4 等 M 系列晶片）：NaverDownloader-mac-apple-silicon.zip
+Mac（Intel 晶片）：NaverDownloader-mac-intel.zip
+  （不確定是哪種 Mac：點左上角蘋果 →「關於這台 Mac」，看「晶片」或「處理器」那一行）
+
 【開啟程式】
-Windows：雙擊「NaverDownloader.exe」
+Windows：雙擊「NaverDownloader-windows.exe」
   （若跳出「已保護您的電腦」，按「其他資訊」→「仍要執行」）
-Mac：解壓縮後，對「NaverDownloader.app」按右鍵 →「打開」→ 再按「打開」
-  （第一次不能直接雙擊，Mac 會擋未簽章的 App；之後就能正常雙擊）
+Mac：
+  1. 雙擊 zip 解壓縮，得到「NaverDownloader.app」
+  2. 雙擊「NaverDownloader.app」，系統會說無法打開，按「完成」關掉
+  3. 打開「系統設定」→「隱私權與安全性」，拉到最下面，按「仍要打開」
+  4. 再雙擊一次 App，選「打開」
+  （只有第一次需要這樣，之後就能正常雙擊）
 
 【下載文章】
 1. 在網址欄貼上網址，一行一個：
@@ -17,6 +27,10 @@ Mac：解壓縮後，對「NaverDownloader.app」按右鍵 →「打開」→ �
 3. 按「開始」，會跳出一個瀏覽器視窗
 4. 在瀏覽器中登入你自己的 Naver 帳號，登入完成後回到程式按「我已登入」
 5. 等待下載完成，文章會一篇一篇存成 .md 檔（可用文字編輯器或 Obsidian 開啟）
+
+【沒有 Naver 帳號】
+按「開始」前勾選「不登入（只下載公開內容）」，就不會打開登入頁、直接開始下載。
+付費文章在沒登入時可能只抓得到預覽。
 
 【補充】
 - 只會下載你帳號有訂閱、看得到的文章

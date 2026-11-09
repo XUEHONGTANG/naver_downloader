@@ -1,9 +1,11 @@
-# 每次 push 或在 Actions 頁面手動執行，會自動打包 Windows / Mac 版本
+# push 到 main：打包 Windows / Mac 版本，可在 Actions 頁面下載
+# push v 開頭的 tag（例如 v1.0）：打包後發佈到 Releases 頁面
 name: Build
 
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
 jobs:
@@ -13,11 +15,11 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            name: NaverDownloader-windows
+            name: windows
           - os: macos-latest        # Apple Silicon（M 系列）
-            name: NaverDownloader-mac-apple-silicon
+            name: mac-apple-silicon
           - os: macos-15-intel      # Intel Mac
-            name: NaverDownloader-mac-intel
+            name: mac-intel
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -33,21 +35,45 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           pyinstaller --noconfirm --onefile --windowed --name NaverDownloader naver_downloader.py
-          Copy-Item 使用說明.txt dist/
+          New-Item -ItemType Directory -Force out
+          Move-Item dist/NaverDownloader.exe out/NaverDownloader-windows.exe
 
       - name: Build (Mac)
         if: runner.os == 'macOS'
         run: |
           pyinstaller --noconfirm --windowed --name NaverDownloader naver_downloader.py
-          cd dist
-          ditto -c -k --keepParent NaverDownloader.app NaverDownloader-mac.zip
-          cp ../使用說明.txt .
+          mkdir -p out
+          ditto -c -k --keepParent dist/NaverDownloader.app out/NaverDownloader-${{ matrix.name }}.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}
-          path: |
-            dist/NaverDownloader.exe
-            dist/NaverDownloader-mac.zip
-            dist/使用說明.txt
+          name: NaverDownloader-${{ matrix.name }}
+          path: out/*
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            下載對應自己電腦的檔案：
+            - Windows：NaverDownloader-windows.exe
+            - Mac（M1/M2/M3/M4 等 M 系列晶片）：NaverDownloader-mac-apple-silicon.zip
+            - Mac（Intel 晶片）：NaverDownloader-mac-intel.zip
+
+            使用方式請看「使用說明.txt」。
+          files: |
+            out/*
+            使用說明.txt
