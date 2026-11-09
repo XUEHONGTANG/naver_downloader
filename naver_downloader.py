@@ -5,6 +5,7 @@ Naver Premium Contents 文章下載器（圖形介面版）
 → 程式自動把文章存成 .md 檔。
 每個人只能下載自己帳號有權限看到的文章，僅供個人備份。
 """
+import html
 import queue
 import re
 import threading
@@ -12,7 +13,7 @@ import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from playwright.sync_api import sync_playwright
 
@@ -74,6 +75,44 @@ def collect_links(page, list_url, log, max_scrolls=80):
         if stable >= 3:
             break
     return seen
+
+
+LIST_API = BASE + "/ch/template/SCS_PREMIUM_CONTENT_LIST"
+ITEM_RE = re.compile(r'<li class="content_item.*?</li>', re.S)
+
+
+def _text(pattern, s):
+    m = re.search(pattern, s, re.S)
+    return html.unescape(re.sub(r"<[^>]+>", "", m.group(1))).strip() if m else ""
+
+
+def list_via_api(page, list_url, log):
+    """直接呼叫網站載入列表用的 API，一頁一頁讀到最後；回傳 {網址: (標題, 分類)}
+    網址帶 categoryId 時只保留該分類（API 本身不會篩選，所以自己篩）"""
+    cp, sub = channel_prefix(list_url).strip("/").split("/")
+    want_cat = parse_qs(urlparse(list_url).query).get("categoryId", [""])[0]
+    seen, count, cursor = {}, 0, ""
+    while True:
+        r = page.request.get(LIST_API, params={"cpName": cp, "subId": sub, "lastContentId": cursor})
+        h = r.json()["renderedComponent"]["SCS_PREMIUM_CONTENT_LIST"]
+        before = count
+        for item in ITEM_RE.findall(h):
+            m = re.search(rf'href="(/{cp}/{sub}/contents/[0-9A-Za-z]+)"', item)
+            if not m:
+                continue
+            count += 1
+            cat_id = re.search(r'categoryId&#x3D;([0-9A-Za-z]+)" class="content_category"', item)
+            if want_cat and (not cat_id or cat_id.group(1) != want_cat):
+                continue
+            seen.setdefault(BASE + m.group(1), (
+                _text(r'<strong class="content_title">(.*?)</strong>', item),
+                _text(r'class="content_category"[^>]*>(.*?)</a>', item)))
+        log(f"已讀取 {count} 篇，符合 {len(seen)} 篇…")
+        m = re.search(r'data-cursor="([^"]*)" data-has-next="(\w+)"', h)
+        if not m or m.group(2) != "true" or not m.group(1) or count == before:
+            return seen
+        cursor = m.group(1)
+        time.sleep(0.5)
 
 
 def fetch_article(page, url):
@@ -148,28 +187,46 @@ def run_job(urls, out_dir, login_event, log, done, skip_login=False):
                 m = ARTICLE_URL_RE.match(u)
                 if m:
                     links.setdefault(m.group(0), ("", ""))
-                elif CHANNEL_ROOT_RE.match(u):
-                    for cat, cat_url in find_categories(page, u, log):
-                        log(f"讀取分類：{cat}")
-                        for k, v in collect_links(page, cat_url, log).items():
-                            links.setdefault(k, (v, cat))
-                else:
-                    log(f"讀取列表：{u}")
-                    for k, v in collect_links(page, u, log).items():
-                        links.setdefault(k, (v, ""))
+                    continue
+                log(f"讀取列表：{u}")
+                is_root = bool(CHANNEL_ROOT_RE.match(u))
+                try:
+                    # 頻道首頁：依每篇文章的分類放資料夾；列表網址：全部放同一個資料夾
+                    for k, (title, cat) in list_via_api(page, u, log).items():
+                        links.setdefault(k, (title, cat if is_root else ""))
+                except Exception as e:
+                    log(f"API 讀取失敗（{e}），改用捲動網頁的方式…")
+                    if is_root:
+                        for cat, cat_url in find_categories(page, u, log):
+                            log(f"讀取分類：{cat}")
+                            for k, v in collect_links(page, cat_url, log).items():
+                                links.setdefault(k, (v, cat))
+                    else:
+                        for k, v in collect_links(page, u, log).items():
+                            links.setdefault(k, (v, ""))
             if not links:
                 raise RuntimeError("沒有找到任何文章，網址可能有誤或網站改版。")
+            log(f"共找到 {len(links)} 篇文章，開始下載…")
 
-            existing = {f.stem for f in out.rglob("*.md")}
+            # 用檔案裡的「來源」網址判斷是否下載過，標題相同的不同文章也不會互相覆蓋
+            existing = {}
+            for f in out.rglob("*.md"):
+                m = re.search(r"^來源：(\S+)", f.read_text(encoding="utf-8", errors="ignore"), re.M)
+                if m:
+                    existing[m.group(1)] = f
             for i, (url, (title, cat)) in enumerate(links.items(), 1):
-                if title and safe_name(title) in existing:
-                    log(f"[{i}/{len(links)}] 已存在，略過：{title}")
+                if url in existing:
+                    log(f"[{i}/{len(links)}] 已存在，略過：{title or url}")
                     continue
                 t, text = fetch_article(page, url)
                 name = safe_name(t or title)
                 folder = out / safe_name(cat) if cat else out
                 folder.mkdir(parents=True, exist_ok=True)
-                (folder / f"{name}.md").write_text(
+                path = folder / f"{name}.md"
+                if path.exists():
+                    path = folder / f"{name}_{url.rsplit('/', 1)[-1]}.md"
+                existing[url] = path
+                path.write_text(
                     f"# {t}\n\n來源：{url}\n\n{text}\n", encoding="utf-8"
                 )
                 log(f"[{i}/{len(links)}] {t}")
