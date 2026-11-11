@@ -161,6 +161,7 @@ def find_categories(page, root_url, log):
     return list(cats.items()) + [("未分類", BASE + prefix + "/contents")]
 
 
+NUM_PREFIX_RE = re.compile(r"^\d{3,}_")
 ARTICLE_URL_RE = re.compile(r"^https?://contents\.premium\.naver\.com/[^/]+/[^/]+/contents/[0-9A-Za-z]+")
 
 
@@ -183,6 +184,7 @@ def run_job(urls, out_dir, login_event, log, done, skip_login=False):
 
             # 每行可以是：單篇文章網址 / 頻道首頁（依分類全抓）/ 某個列表網址
             links = {}  # url -> (title, 分類資料夾)
+            listed = set()  # 從列表讀到的文章（有發文順序，單篇網址沒有）
             for u in urls:
                 m = ARTICLE_URL_RE.match(u)
                 if m:
@@ -194,6 +196,7 @@ def run_job(urls, out_dir, login_event, log, done, skip_login=False):
                     # 頻道首頁：依每篇文章的分類放資料夾；列表網址：全部放同一個資料夾
                     for k, (title, cat) in list_via_api(page, u, log).items():
                         links.setdefault(k, (title, cat if is_root else ""))
+                        listed.add(k)
                 except Exception as e:
                     log(f"API 讀取失敗（{e}），改用捲動網頁的方式…")
                     if is_root:
@@ -201,12 +204,23 @@ def run_job(urls, out_dir, login_event, log, done, skip_login=False):
                             log(f"讀取分類：{cat}")
                             for k, v in collect_links(page, cat_url, log).items():
                                 links.setdefault(k, (v, cat))
+                                listed.add(k)
                     else:
                         for k, v in collect_links(page, u, log).items():
                             links.setdefault(k, (v, ""))
+                            listed.add(k)
             if not links:
                 raise RuntimeError("沒有找到任何文章，網址可能有誤或網站改版。")
             log(f"共找到 {len(links)} 篇文章，開始下載…")
+
+            # 每個資料夾內依發文順序編號：列表是新的在前，所以倒過來數，最舊的是 001，
+            # 之後有新文章只會往後加，已下載的編號不會變
+            seq, counts = {}, {}
+            for url in reversed([u for u in links if u in listed]):
+                cat = links[url][1]
+                counts[cat] = counts.get(cat, 0) + 1
+                seq[url] = counts[cat]
+            width = max([3] + [len(str(n)) for n in counts.values()])
 
             # 用檔案裡的「來源」網址判斷是否下載過，標題相同的不同文章也不會互相覆蓋
             existing = {}
@@ -215,11 +229,19 @@ def run_job(urls, out_dir, login_event, log, done, skip_login=False):
                 if m:
                     existing[m.group(1)] = f
             for i, (url, (title, cat)) in enumerate(links.items(), 1):
+                num = f"{seq[url]:0{width}d}_" if url in seq else ""
                 if url in existing:
-                    log(f"[{i}/{len(links)}] 已存在，略過：{title or url}")
+                    # 以前下載的檔案補上（或更正）編號
+                    f = existing[url]
+                    new = f.with_name(num + NUM_PREFIX_RE.sub("", f.name))
+                    if num and new != f and not new.exists():
+                        f.rename(new)
+                        log(f"[{i}/{len(links)}] 已存在，改名為：{new.name}")
+                    else:
+                        log(f"[{i}/{len(links)}] 已存在，略過：{title or url}")
                     continue
                 t, text = fetch_article(page, url)
-                name = safe_name(t or title)
+                name = num + safe_name(t or title)
                 folder = out / safe_name(cat) if cat else out
                 folder.mkdir(parents=True, exist_ok=True)
                 path = folder / f"{name}.md"
